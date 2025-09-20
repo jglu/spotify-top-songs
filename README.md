@@ -31,3 +31,14 @@ This script updates a specified Spotify playlist with a user's top 50 songs from
    pip install -r requirements.txt
    python main.py
    ```
+
+
+## What I learned in this project
+
+- my first time implementing OAuth 2.0 flow! 
+- python's requests library functions are all synchronous. i've gotten too used to await/async "garb" in js.
+
+## Next steps
+
+1. move REDIRECT_URI to my personal website. it's currently set to localhost.
+2. currently, this script deletes and re-adds songs. i'd like to have a comparison step that only removes songs if they are no longer in the user's top 50. this would allows users to see how long a song has *stayed* in their top 50.
