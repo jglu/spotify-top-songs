@@ -101,8 +101,7 @@ def refresh_token():
 @app.route('/update-playlist')
 def update_playlist():
     # this is the playlist that we are updating
-    playlist_id = '2cwJtJBcDkh4FZRnKYEtLT' # real
-    # playlist_id = '2w97OFioBx7KNWaPOdrtfr' # test
+    playlist_id = os.getenv('SPOTIFY_PLAYLIST_ID')
     
     # before anything, ensure that access_token exists and is not expired.
     ensure_valid_access_token()
