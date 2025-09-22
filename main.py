@@ -22,9 +22,9 @@ API_BASE_URL = 'https://api.spotify.com/v1'
 
 @app.route('/')
 def index():
-    return "Update top 50 songs playlist <a href='/login'>Login with Spotify</a>"
+    return "Update top 50 songs playlist <a href='/auth/spotify/login'>Login with Spotify</a>"
 
-@app.route('/login')
+@app.route('/auth/spotify/login')
 def login():
     state = secrets.token_urlsafe(32)
     session['state'] = state
@@ -75,10 +75,10 @@ def callback():
         session['expires_at'] = datetime.now().timestamp() + token_info['expires_in']
         return redirect('/update-playlist')
     
-@app.route('/refresh-token')
+@app.route('/auth/spotify/refresh-token')
 def refresh_token():
     if 'refresh_token' not in session:
-        return redirect('/login')
+        return redirect('/auth/spotify/login')
     if datetime.now().timestamp() > session['expires_at']:
         request_body = {
             'grant_type': 'refresh_token',
@@ -126,9 +126,9 @@ def update_playlist():
 # 0. ensure unexpired access token
 def ensure_valid_access_token():
     if 'access_token' not in session:
-        return redirect('/login')
+        return redirect('/auth/spotify/login')
     if datetime.now().timestamp() > session['expires_at']:
-        return redirect('/refresh-token')
+        return redirect('/auth/spotify/refresh-token')
     return
 
 
