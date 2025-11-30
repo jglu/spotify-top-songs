@@ -13,6 +13,7 @@ load_dotenv()  # loads variables from .env file
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+PLAYLIST_DESCRIPTION = os.getenv('SPOTIFY_PLAYLIST_DESCRIPTION')
 
 REDIRECT_URI = 'http://127.0.0.1:5000/auth/spotify/callback' # for testing
 
@@ -121,6 +122,9 @@ def update_playlist():
     # and add these new 50 tracks from the uris
     add_new_songs(playlist_id, new_URIs)
     
+    # update playlist description to show last updated date
+    update_playlist_description(playlist_id)
+    
     return "done!"
 
 # 0. ensure unexpired access token
@@ -198,6 +202,30 @@ def add_new_songs(playlist_id, track_URIs):
         return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
     return
 
+def update_playlist_description(playlist_id):
+    """
+    Updates description to show last updated date. Month is lowercase.
+    ex: PLAYLIST_DESCRIPTION + " [last updated: november 30th, 2025]"
+    """
+    now = datetime.now()
+    month = now.strftime('%B').lower()
+    day_suffix = "th" if 11 <= now.day % 100 <= 13 else {1:"st",2:"nd",3:"rd"}.get(now.day % 10, "th")
+    now = now.strftime(f'{month} %d{day_suffix}, %Y')
+    description = PLAYLIST_DESCRIPTION + f" [last updated: {now}]"
+    
+    headers = {
+        'Authorization': f"Bearer {session['access_token']}",
+        'Content-Type': 'application/json'
+    }
+    body = {
+        'description': description
+    }
+    url = API_BASE_URL + "/playlists/" +  playlist_id
+    res = requests.put(url, headers=headers, json=body)
+    if res.status_code != 200:
+        return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
+    return
+    
 if __name__ == '__main__':
     app.run(debug=True)
     
