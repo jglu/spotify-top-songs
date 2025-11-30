@@ -6,6 +6,7 @@ from datetime import datetime
 import secrets
 from dotenv import load_dotenv
 import os
+import re
 
 app = Flask(__name__)
 
@@ -13,7 +14,6 @@ load_dotenv()  # loads variables from .env file
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-PLAYLIST_DESCRIPTION = os.getenv('SPOTIFY_PLAYLIST_DESCRIPTION')
 
 REDIRECT_URI = 'http://127.0.0.1:5000/auth/spotify/callback' # for testing
 
@@ -204,23 +204,40 @@ def add_new_songs(playlist_id, track_URIs):
 
 def update_playlist_description(playlist_id):
     """
-    Updates description to show last updated date. Month is lowercase.
-    ex: PLAYLIST_DESCRIPTION + " [last updated: november 30th, 2025]"
+    Updates playlist description to show last updated date. 
+    Keeps the existing description, overwriting any previous '[last updated: ...]'.
+    Month is lowercase.
     """
-    now = datetime.now()
-    month = now.strftime('%B').lower()
-    day_suffix = "th" if 11 <= now.day % 100 <= 13 else {1:"st",2:"nd",3:"rd"}.get(now.day % 10, "th")
-    now = now.strftime(f'{month} %d{day_suffix}, %Y')
-    description = PLAYLIST_DESCRIPTION + f" [last updated: {now}]"
     
+    # 1. get current existing playlist description (current_description)
+    # gets existing description and updates that instead of hardcoding the description in .env
     headers = {
         'Authorization': f"Bearer {session['access_token']}",
         'Content-Type': 'application/json'
     }
+    url = f"{API_BASE_URL}/playlists/{playlist_id}"
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        return jsonify({"error": f"Failed to fetch playlist: {res.status_code}"}), res.status_code
+    
+    data = res.json()
+    current_description = data.get("description", "")
+    
+    # remove "[last updated: ...]" suffix
+    current_description = re.sub(r"\s*\[last updated: .*?\]$", "", current_description).strip()
+    
+    # 2. get new formatted date to use in new_description
+    now = datetime.now()
+    month = now.strftime('%B').lower()
+    day_suffix = "th" if 11 <= now.day % 100 <= 13 else {1:"st",2:"nd",3:"rd"}.get(now.day % 10, "th")
+    now_str = f'{month} {now.day}{day_suffix}, {now.year}'
+    
+    new_description = f"{current_description} [last updated: {now_str}]"
+    
+    # 3. update playlist description with new_description
     body = {
-        'description': description
+        'description': new_description
     }
-    url = API_BASE_URL + "/playlists/" +  playlist_id
     res = requests.put(url, headers=headers, json=body)
     if res.status_code != 200:
         return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
