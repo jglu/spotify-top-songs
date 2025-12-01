@@ -1,4 +1,4 @@
-from flask import Flask, redirect, request, jsonify, session
+from flask import Flask, redirect, request, session
 
 import requests
 import urllib.parse
@@ -52,7 +52,7 @@ def callback():
 
     # error
     if 'error' in request.args:
-        return jsonify({"error": request.args['error']})
+        raise Exception({"error": request.args['error']})
     
     # no error
     if 'code' in request.args:
@@ -65,14 +65,16 @@ def callback():
         }
 
         res = requests.post(TOKEN_URL, data=request_body)
-        if res.status_code != 200:
-            return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
-
+        res.raise_for_status()
         token_info = res.json()
 
         # store in session
         session['access_token'] = token_info['access_token']
         session['refresh_token'] = token_info['refresh_token']
+        
+        # print("access token:", session['access_token']) # testing
+        print("refresh token:", session['refresh_token']) # testing
+        
         session['expires_at'] = datetime.now().timestamp() + token_info['expires_in']
         return redirect('/update-playlist')
     
@@ -88,6 +90,7 @@ def refresh_token():
             'client_secret': CLIENT_SECRET,
         }
         res = requests.post(TOKEN_URL, data=request_body)
+        res.raise_for_status()
         token_info = res.json()
 
         # store again
@@ -146,8 +149,7 @@ def get_existing_URIs(playlist_id, token):
     # tmp (sep 20 2025, 09/20/2025): abstract away the 50 track limit away later
     url = API_BASE_URL + "/playlists/" +  playlist_id + "/tracks?fields=items(track(uri))&limit=50"
     res = requests.get(url, headers=headers)
-    if res.status_code != 200:
-        return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
+    res.raise_for_status()
     
     # format in the way that needs to be passed in for deleting
     track_URIs = []
@@ -168,8 +170,7 @@ def delete_existing_songs(playlist_id, track_URIs, token):
     
     url = API_BASE_URL + "/playlists/" +  playlist_id + "/tracks"
     res = requests.delete(url, headers=headers, json=body)
-    if res.status_code != 200:
-        return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
+    res.raise_for_status()
     return
 
 # 3. get URIs for the short_term top tracks
@@ -179,8 +180,7 @@ def get_new_URIs(token):
     }
     url = API_BASE_URL + "/me/top/tracks?time_range=short_term&limit=50"
     res = requests.get(url, headers=headers)
-    if res.status_code != 200:
-        return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
+    res.raise_for_status()
     
     # don't format into a comma-separated string of uris bc there are too many
     track_URIs = []
@@ -199,8 +199,7 @@ def add_new_songs(playlist_id, track_URIs, token):
     }
     url = API_BASE_URL + "/playlists/" +  playlist_id + "/tracks"
     res = requests.post(url, headers=headers, json=body)
-    if res.status_code != 200:
-        return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
+    res.raise_for_status()
     return
 
 def update_playlist_description(playlist_id, token):
@@ -218,8 +217,7 @@ def update_playlist_description(playlist_id, token):
     }
     url = f"{API_BASE_URL}/playlists/{playlist_id}"
     res = requests.get(url, headers=headers)
-    if res.status_code != 200:
-        return jsonify({"error": f"Failed to fetch playlist: {res.status_code}"}), res.status_code
+    res.raise_for_status()
     
     data = res.json()
     current_description = data.get("description", "")
@@ -240,8 +238,7 @@ def update_playlist_description(playlist_id, token):
         'description': new_description
     }
     res = requests.put(url, headers=headers, json=body)
-    if res.status_code != 200:
-        return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
+    res.raise_for_status()
     return
     
 if __name__ == '__main__':
