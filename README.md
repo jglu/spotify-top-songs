@@ -1,44 +1,90 @@
 # Spotify Monthly Top Songs Playlist
 
-This script updates a specified Spotify playlist with a user's top 50 songs from the past month.
+This project updates a specified Spotify playlist with a user's top 50 songs from the past month.
 
-- The targeted playlist should have **at most 100 songs**, since Spotify's API only allows deleting up to 100 songs at a time.
-- Spotify only allows users to access their top 50 songs (and hence the targeted playlist should have 50 or less songs), so this limitation is a non-issue.
-  
-## Setup and How to Run
+It supports two modes of operation:
+1. **Interactive Web App**: A local Flask server that you can log into to update the playlist manually.
+2. **Automated Script**: A standalone script that can be run periodically (e.g., via cron) to update the playlist automatically without user interaction.
 
-1. Clone the repository.  
-2. Create a Spotify app at https://developer.spotify.com/dashboard/applications to get the Client ID (SPOTIFY_CLIENT_ID) and Client Secret (SPOTIFY_CLIENT_SECRET).
-3. Create a .env file. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.
-4. In .env, set a Flask secret key (can be any string) as FLASK_SECRET_KEY
-5. In .env, set your SPOTIFY_PLAYLIST_ID. Each playlist has its own unique id. To find this,
+## Prerequisites
 
-   - Right click the playlist in Spotify
-   - Select > Share > Copy link to playlist
-   - From the URL, copy the part after `https://open.spotify.com/playlist/` and before any `?` or query string
+1. **Spotify Developer Account**:
+   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/applications) and create an app.
+   - Note down the `Client ID` and `Client Secret`.
+   - In the app settings, add `http://127.0.0.1:5000/auth/spotify/callback` to the **Redirect URIs**.
 
+2. **Python Installed**: ensure you have Python 3 installed.
+
+## Setup
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/jglu/spotify-top-songs.git
+   cd spotify-top-songs
    ```
-   For example, in 
 
-     https://open.spotify.com/playlist/3cEYpjA9oz9GiPac4AsH4n
-
-   the id is 3cEYpjA9oz9GiPac4AsH4n.
-   Set your SPOTIFY_PLAYLIST_ID to this id.
-   ```
-6. Install dependencies and run the script.
-
-   ```
+2. **Install dependencies**:
+   ```bash
    pip install -r requirements.txt
-   python main.py
    ```
 
+3. **Configure Environment Variables**:
+   - Create a `.env` file in the root directory (you can copy `.env.template`).
+   - Fill in the following variables:
+     ```bash
+     SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+     SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
+     FLASK_SECRET_KEY=any_random_string_here
+     SPOTIFY_PLAYLIST_ID=your_spotify_playlist_id_here
+     ```
+   
+   **How to find your Playlist ID**:
+   - Create a new playlist in Spotify (or use an existing one).
+   - Right-click the playlist > **Share** > **Copy link to playlist**.
+   - The ID is the part between `/playlist/` and `?`.
+     - Example: `https://open.spotify.com/playlist/3cEYpjA9oz9GiPac4AsH4n?si=...` -> ID is `3cEYpjA9oz9GiPac4AsH4n`.
+     - **Note**: The playlist must be owned by you or editable by you.
 
-## What I learned in this project
+## How to Run
 
-- my first time implementing OAuth 2.0 flow! 
-- python's requests library functions are all synchronous. i've gotten too used to await/async "garb" in js.
+### Option 1: Interactive Mode (manual updating)
 
-## Next steps
+This starts a local web server to handle authentication and update the playlist.
 
-1. move REDIRECT_URI to my personal website. it's currently set to localhost.
-2. currently, this script deletes and re-adds songs. i'd like to have a comparison step that only removes songs if they are no longer in the user's top 50. this would allows users to see how long a song has *stayed* in their top 50.
+1. Run the application:
+   ```bash
+   python api.py
+   ```
+2. Open your browser and go to `http://127.0.0.1:5000`.
+3. Click "Login with Spotify".
+4. After logging in, the script will update your playlist and display "done!".
+5. **Important**: Check your terminal output. The script will print your **Refresh Token**. Copy this refresh token if you want to use the automated script (Option 2).
+
+### Option 2: Automated Mode (what you probably want)
+
+This runs the update script directly using a refresh token, without starting a web server. Scheduled to run daily at 6:00 AM UTC via the included GitHub Actions workflow.
+
+1. Ensure you have obtained your `SPOTIFY_REFRESH_TOKEN` using Option 1.
+2. Add the environment variables to your cloned repository.
+
+   - In Settings > Secrets and variables > Actions, click "New repository secret".
+   - Add four repository secrets: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_PLAYLIST_ID`, `SPOTIFY_REFRESH_TOKEN`
+   - Option 2 no longer requires `FLASK_SECRET_KEY`.
+
+3. That's it! The workflow will now run automatically on schedule.
+
+## Notes
+
+- The script deletes all existing tracks in the target playlist and replaces them with your current top 50 songs.
+- Spotify's API limits batch deletion to 100 songs, but since top tracks are limited to 50, this is handled automatically.
+- The playlist description is updated with the last update date.
+- Automated script runs at 6:00 AM UTC. Time can be changed in [daily_update.yaml](./.github/workflows/daily_update.yaml).
+
+## What I Learned
+
+- Implementing complete OAuth 2.0 flow with Spotify.
+- Managing environment variables and secrets in GitHub Actions.
+
+## License
+
+[MIT](LICENSE)
