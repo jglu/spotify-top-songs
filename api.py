@@ -106,24 +106,25 @@ def update_playlist():
     
     # before anything, ensure that access_token exists and is not expired.
     ensure_valid_access_token()
+    token = session['access_token']
     
     # get all 50 URIs of the songs in a specific playlist
     #   ensure that the 50 URIs are in order from most to least listened; 
     #   will make it easier to change code later 
-    existing_URIs = get_existing_URIs(playlist_id)
+    existing_URIs = get_existing_URIs(playlist_id, token)
     
     # then delete the 50 tracks from them
-    delete_existing_songs(playlist_id, existing_URIs)
+    delete_existing_songs(playlist_id, existing_URIs, token)
     
     # now the playlist is empty.
     # get new 50 URIs of the top songs
-    new_URIs = get_new_URIs()
+    new_URIs = get_new_URIs(token)
     
     # and add these new 50 tracks from the uris
-    add_new_songs(playlist_id, new_URIs)
+    add_new_songs(playlist_id, new_URIs, token)
     
     # update playlist description to show last updated date
-    update_playlist_description(playlist_id)
+    update_playlist_description(playlist_id, token)
     
     return "done!"
 
@@ -137,9 +138,9 @@ def ensure_valid_access_token():
 
 
 # 1. gets existing URIs of 50 tracks
-def get_existing_URIs(playlist_id):
+def get_existing_URIs(playlist_id, token):
     headers = {
-        'Authorization': f"Bearer {session['access_token']}"
+        'Authorization': f"Bearer {token}"
     }
     
     # tmp (sep 20 2025, 09/20/2025): abstract away the 50 track limit away later
@@ -156,9 +157,9 @@ def get_existing_URIs(playlist_id):
 
 
 # 2. delete all tracks in the playlist 
-def delete_existing_songs(playlist_id, track_URIs):
+def delete_existing_songs(playlist_id, track_URIs, token):
     headers = {
-        'Authorization': f"Bearer {session['access_token']}",
+        'Authorization': f"Bearer {token}",
         'Content-Type': 'application/json'
     }
     body = {
@@ -172,9 +173,9 @@ def delete_existing_songs(playlist_id, track_URIs):
     return
 
 # 3. get URIs for the short_term top tracks
-def get_new_URIs():
+def get_new_URIs(token):
     headers = {
-        'Authorization': f"Bearer {session['access_token']}"
+        'Authorization': f"Bearer {token}"
     }
     url = API_BASE_URL + "/me/top/tracks?time_range=short_term&limit=50"
     res = requests.get(url, headers=headers)
@@ -188,9 +189,9 @@ def get_new_URIs():
     return track_URIs
 
 # 4. add tracks to playlist
-def add_new_songs(playlist_id, track_URIs):
+def add_new_songs(playlist_id, track_URIs, token):
     headers = {
-        'Authorization': f"Bearer {session['access_token']}",
+        'Authorization': f"Bearer {token}",
         'Content-Type': 'application/json'
     }
     body = {
@@ -202,7 +203,7 @@ def add_new_songs(playlist_id, track_URIs):
         return jsonify({"error": f"Request failed with status {res.status_code}"}), res.status_code
     return
 
-def update_playlist_description(playlist_id):
+def update_playlist_description(playlist_id, token):
     """
     Updates playlist description to show last updated date. 
     Keeps the existing description, overwriting any previous '[last updated: ...]'.
@@ -212,7 +213,7 @@ def update_playlist_description(playlist_id):
     # 1. get current existing playlist description (current_description)
     # gets existing description and updates that instead of hardcoding the description in .env
     headers = {
-        'Authorization': f"Bearer {session['access_token']}",
+        'Authorization': f"Bearer {token}",
         'Content-Type': 'application/json'
     }
     url = f"{API_BASE_URL}/playlists/{playlist_id}"
