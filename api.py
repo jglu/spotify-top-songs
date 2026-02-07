@@ -116,15 +116,19 @@ def update_playlist():
     #   will make it easier to change code later 
     existing_URIs = get_existing_URIs(playlist_id, token)
     
-    # then delete the 50 tracks from them
-    delete_existing_songs(playlist_id, existing_URIs, token)
+    # # then delete the 50 tracks from them
+    # delete_existing_songs(playlist_id, existing_URIs, token)
     
     # now the playlist is empty.
     # get new 50 URIs of the top songs
     new_URIs = get_new_URIs(token)
     
-    # and add these new 50 tracks from the uris
-    add_new_songs(playlist_id, new_URIs, token)
+    # # and add these new 50 tracks from the uris
+    # add_new_songs(playlist_id, new_URIs, token)
+    
+    delete_only_not_top_songs(existing_URIs, new_URIs, playlist_id, token)
+    add_only_new_top_songs(existing_URIs, new_URIs, playlist_id, token)
+    # TODO: move the songs around
     
     # update playlist description to show last updated date
     update_playlist_description(playlist_id, token)
@@ -244,3 +248,44 @@ def update_playlist_description(playlist_id, token):
 if __name__ == '__main__':
     app.run(debug=True)
     
+# my goal is to, instead of deleting all 50 songs and adding back 50 songs, i want to
+# 1. get the old top 50 songs (in order) in my playlist rn
+#   - this is: get_existing_URIs()
+# 2. get the new top 50 songs
+#   - this is: get_new_URIs()
+# 3. diff these URIs. 
+#       a. delete the URIs that were in old 50 and are not in new 50
+#       b. add the URIs that were not in old 50 and are in new 50
+#       c. optimize the best way to move these uris in order to match the new order
+#   - a and b can be done using set.difference()
+
+def delete_only_not_top_songs(existing_URIs, new_URIs, playlist_id, token):
+    """
+    Deletes songs from the playlist that are no longer in the top 50.
+    Songs that were in the top 50 yesterday and continue to be in the top 50 today are untouched.
+    """
+    uris_to_delete = set(new_URIs).difference(existing_URIs)
+    delete_existing_songs(playlist_id, uris_to_delete, token)
+
+def add_only_new_top_songs(existing_URIs, new_URIs, playlist_id, token):
+    """
+    Adds songs from the playlist that were not in the top 50 yesterday but are now in the top 50 today.
+    """
+    uris_to_add = set(existing_URIs).difference(new_URIs)
+    add_new_songs(playlist_id, uris_to_add, token)
+    
+def reorder_songs(existing_URIs, new_URIs, playlist_id, token):
+    "Reorders the songs in the playlist to correctly match the top 50 order."
+    
+    # https://developer.spotify.com/documentation/web-api/reference/reorder-or-replace-playlists-tracks
+    # for each reorder, spotify wants the PUT body to look like
+    # { 
+    #   "range_start": 
+    #   "insert_before":
+    # }
+    # where range_start = the position of the item to be reordered, starting from 0
+    # where insert_before = the position before where the item should be inserted, starting from 0
+    
+    # so i should create a list of these dictionarys starting from range_start=0 to 50
+    
+    pass
