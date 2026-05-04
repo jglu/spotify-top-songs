@@ -21,6 +21,8 @@ AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 API_BASE_URL = 'https://api.spotify.com/v1'
 
+TOP_SONGS_COUNT = 50 # update the top n=50 songs
+
 @app.route('/')
 def index():
     return "Update top 50 songs playlist <a href='/auth/spotify/login'>Login with Spotify</a>"
@@ -100,8 +102,24 @@ def refresh_token():
 
 ## ---
 
-# this is the main function that will call other functions. 
-# what do i need ?
+def run_playlist_update(playlist_id, token) -> None:
+    """
+    Main entrance for updating top 50 songs playlist.
+    """
+    # get top track uris
+    new_uris = get_my_top_tracks_uris(token)
+    
+    # sync playlist (remove songs that are not in the top 50, and add the new songs that are now in the top 50)
+    snapshot_id = get_playlist_snapshot_id(playlist_id, token)
+    synced_uris, snapshot_id = sync_playlist(new_uris, playlist_id, token, snapshot_id)
+    
+    # reorder the songs around
+    _ = reorder_items(synced_uris, new_uris, playlist_id, token, snapshot_id)
+    
+    # update playlist description to show last updated date
+    update_playlist_description(playlist_id, token)
+    return
+
 @app.route('/update-playlist')
 def update_playlist():
     # this is the playlist that we are updating
@@ -111,27 +129,29 @@ def update_playlist():
     ensure_valid_access_token()
     token = session['access_token']
     
-    # get all 50 URIs of the songs in a specific playlist
-    #   ensure that the 50 URIs are in order from most to least listened; 
-    #   will make it easier to change code later 
-    existing_URIs = get_existing_URIs(playlist_id, token)
-    
-    # then delete the 50 tracks from them
-    delete_existing_songs(playlist_id, existing_URIs, token)
-    
-    # now the playlist is empty.
-    # get new 50 URIs of the top songs
-    new_URIs = get_new_URIs(token)
-    
-    # and add these new 50 tracks from the uris
-    add_new_songs(playlist_id, new_URIs, token)
-    
-    # update playlist description to show last updated date
-    update_playlist_description(playlist_id, token)
+    run_playlist_update(playlist_id, token)
     
     return "done!"
 
-# 0. ensure unexpired access token
+
+def get_playlist_snapshot_id(playlist_id, token):
+    """
+    Given a playlist id, return its current snapshot id.
+    """
+    
+    headers = {
+        'Authorization': f"Bearer {token}",
+    }
+    
+    url = f"{API_BASE_URL}/playlists/{playlist_id}"
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+    
+    snapshot_id = res.json()["snapshot_id"]
+    return snapshot_id
+    
+    
+# ensure unexpired access token
 def ensure_valid_access_token():
     if 'access_token' not in session:
         return redirect('/auth/spotify/login')
@@ -140,67 +160,87 @@ def ensure_valid_access_token():
     return
 
 
-# 1. gets existing URIs of 50 tracks
-def get_existing_URIs(playlist_id, token):
+# gets existing URIs in a playlist
+def get_existing_uris(playlist_id, token):
     headers = {
         'Authorization': f"Bearer {token}"
     }
     
-    # tmp (sep 20 2025, 09/20/2025): abstract away the 50 track limit away later
-    url = API_BASE_URL + "/playlists/" +  playlist_id + "/tracks?fields=items(track(uri))&limit=50"
+    url = f"{API_BASE_URL}/playlists/{playlist_id}/items?fields=items%28track%28uri%29%29&limit={TOP_SONGS_COUNT}"
     res = requests.get(url, headers=headers)
     res.raise_for_status()
     
     # format in the way that needs to be passed in for deleting
-    track_URIs = []
+    track_uris = []
     for item in res.json()["items"]:
-        track_URIs.append({"uri": item['track']['uri']})
-    return track_URIs
+        track_uris.append(item['track']['uri'])
+    return track_uris
 
 
-# 2. delete all tracks in the playlist 
-def delete_existing_songs(playlist_id, track_URIs, token):
+def delete_items_from_playlist(playlist_id, item_uris, token, curr_snapshot_id):
+    """
+    Delete items from a playlist.
+    """
+    
+    if not item_uris:
+        return
+    
+    items_uri_formatted = [{"uri": uri} for uri in item_uris]
+    
     headers = {
         'Authorization': f"Bearer {token}",
         'Content-Type': 'application/json'
     }
     body = {
-        'tracks': track_URIs
+        'items': items_uri_formatted,
+        'snapshot_id': curr_snapshot_id
     }
     
-    url = API_BASE_URL + "/playlists/" +  playlist_id + "/tracks"
+    url = f"{API_BASE_URL}/playlists/{playlist_id}/items"
     res = requests.delete(url, headers=headers, json=body)
     res.raise_for_status()
-    return
+    
+    new_snapshot_id = get_playlist_snapshot_id(playlist_id, token)
+    return new_snapshot_id
 
-# 3. get URIs for the short_term top tracks
-def get_new_URIs(token):
+def get_my_top_tracks_uris(token):
     headers = {
         'Authorization': f"Bearer {token}"
     }
-    url = API_BASE_URL + "/me/top/tracks?time_range=short_term&limit=50"
+    url = f"{API_BASE_URL}/me/top/tracks?time_range=short_term&limit={TOP_SONGS_COUNT}"
     res = requests.get(url, headers=headers)
     res.raise_for_status()
     
     # don't format into a comma-separated string of uris bc there are too many
-    track_URIs = []
+    track_uris = []
     for item in res.json()['items']:
-        track_URIs.append(item['uri'])
-    return track_URIs
+        track_uris.append(item['uri'])
+    return track_uris
 
-# 4. add tracks to playlist
-def add_new_songs(playlist_id, track_URIs, token):
+
+def add_items_to_playlist(playlist_id, item_uris, token, curr_snapshot_id):
+    """
+    Add items to a playlist.
+    """
+    
+    if not item_uris:
+        return
+    
     headers = {
         'Authorization': f"Bearer {token}",
         'Content-Type': 'application/json'
     }
     body = {
-        'uris': track_URIs
+        'uris': item_uris,
+        'snapshot_id': curr_snapshot_id
     }
-    url = API_BASE_URL + "/playlists/" +  playlist_id + "/tracks"
+    
+    url = API_BASE_URL + "/playlists/" +  playlist_id + "/items"
     res = requests.post(url, headers=headers, json=body)
     res.raise_for_status()
-    return
+    
+    new_snapshot_id = get_playlist_snapshot_id(playlist_id, token)
+    return new_snapshot_id
 
 def update_playlist_description(playlist_id, token):
     """
@@ -235,12 +275,79 @@ def update_playlist_description(playlist_id, token):
     
     # 3. update playlist description with new_description
     body = {
-        'description': new_description
+        'description': new_description,
     }
     res = requests.put(url, headers=headers, json=body)
     res.raise_for_status()
     return
     
+    
+def sync_playlist(target_uris, playlist_id, token, snapshot_id):
+    """
+    Removes stale songs (songs that are no longer top), and adds new top songs that are missing
+    """
+    
+    existing_uris = get_existing_uris(playlist_id, token)
+    
+    # get uris to delete or add
+    uris_to_add = list(set(target_uris).difference(existing_uris))
+    uris_to_delete = list(set(existing_uris).difference(target_uris))
+    
+    snapshot_id = delete_items_from_playlist(playlist_id, uris_to_delete, token, snapshot_id)
+    snapshot_id = add_items_to_playlist(playlist_id, uris_to_add, token, snapshot_id)
+    
+    return get_existing_uris(playlist_id, token), snapshot_id
+    
+
+def reorder_items(existing_uris, new_uris, playlist_id, token, snapshot_id):
+    """
+    Reorders the items in the playlist to correctly match the top 50 order.
+    """
+    
+    curr_snapshot_id = snapshot_id
+    
+    # first get a list of reorder operations that transform existing_URIs into new_URIs
+    existing_uris_copy = list(existing_uris)
+    reorder_operations = []
+
+    for i, target_uri in enumerate(new_uris):
+        if existing_uris_copy[i] == target_uri:
+            continue
+
+        j = existing_uris_copy.index(target_uri)
+
+        if j > i:
+            insert_before = i
+        else:
+            insert_before = i + 1
+
+        reorder_operations.append({
+            "range_start": j,
+            "insert_before": insert_before,
+            "range_length": 1
+        })
+
+        item = existing_uris_copy.pop(j)
+        existing_uris_copy.insert(insert_before, item)
+
+    # with reorder_operations, call the reorder endpoint
+    headers = {
+        'Authorization': f"Bearer {token}",
+        'Content-Type': 'application/json'
+    }
+    url = f"{API_BASE_URL}/playlists/{playlist_id}/items"
+    
+    for reorder_operation in reorder_operations:
+        # add snapshot_id to force correct order
+        reorder_operation["snapshot_id"] = curr_snapshot_id
+        res = requests.put(url, headers=headers,json=reorder_operation)
+        res.raise_for_status()
+        
+        # get new snapshot_id
+        curr_snapshot_id = res.json()["snapshot_id"]
+    
+    return curr_snapshot_id
+
+
 if __name__ == '__main__':
     app.run(debug=True)
-    
